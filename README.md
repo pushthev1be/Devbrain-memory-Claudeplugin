@@ -61,7 +61,7 @@ semantic search, install the `devbrain` CLI from source — it shares the same
 `~/.devbrain` store, so both see the same entries.
 
 The HTTP agent route is also absent for the same reason, and answers `501` saying
-so. The dashboard, search, backfill and all three tools work.
+so. So is the CLI's interactive terminal UI, which no hook or command uses. The dashboard, search, backfill and all three tools work.
 
 ## Where memory lives
 
