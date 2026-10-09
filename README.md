@@ -75,14 +75,15 @@ eat the commit hashes and UUIDs that make an error findable.
 
 ## Source
 
-This repository holds the built plugin: two bundled JavaScript files, the hooks,
+This repository holds the built plugin: the bundled JavaScript in `dist/` (two
+entry files and the readable chunks they share, each under 256 KiB), the hooks,
 the skill, the commands and these docs. It deliberately has no `package.json`,
 because a plugin root with one makes Claude Code install Node dependencies, and
 for the source repository's npm workspace that fails on Windows with
 `EPERM: operation not permitted, symlink`.
 
-The readable source — TypeScript across three packages, 536 tests — is at
-**https://github.com/pushthev1be/devbrain**, and `plugin/dist/*.js` here is built
+The readable source — TypeScript across three packages, 533 tests — is at
+**https://github.com/pushthev1be/devbrain**, and `dist/` here is built
 from it with `npm run bundle`. Issues and pull requests belong there.
 
 MIT licensed. See [LICENSE](LICENSE) and [PRIVACY.md](PRIVACY.md).
