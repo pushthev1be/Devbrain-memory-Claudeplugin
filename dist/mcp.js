@@ -9155,7 +9155,7 @@ var require_bson = __commonJS({
     }
     var wasm = void 0;
     try {
-      wasm = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 13, 2, 96, 0, 1, 127, 96, 4, 127, 127, 127, 127, 1, 127, 3, 7, 6, 0, 1, 1, 1, 1, 1, 6, 6, 1, 127, 1, 65, 0, 11, 7, 50, 6, 3, 109, 117, 108, 0, 1, 5, 100, 105, 118, 95, 115, 0, 2, 5, 100, 105, 118, 95, 117, 0, 3, 5, 114, 101, 109, 95, 115, 0, 4, 5, 114, 101, 109, 95, 117, 0, 5, 8, 103, 101, 116, 95, 104, 105, 103, 104, 0, 0, 10, 191, 1, 6, 4, 0, 35, 0, 11, 36, 1, 1, 126, 32, 0, 173, 32, 1, 173, 66, 32, 134, 132, 32, 2, 173, 32, 3, 173, 66, 32, 134, 132, 126, 34, 4, 66, 32, 135, 167, 36, 0, 32, 4, 167, 11, 36, 1, 1, 126, 32, 0, 173, 32, 1, 173, 66, 32, 134, 132, 32, 2, 173, 32, 3, 173, 66, 32, 134, 132, 127, 34, 4, 66, 32, 135, 167, 36, 0, 32, 4, 167, 11, 36, 1, 1, 126, 32, 0, 173, 32, 1, 173, 66, 32, 134, 132, 32, 2, 173, 32, 3, 173, 66, 32, 134, 132, 128, 34, 4, 66, 32, 135, 167, 36, 0, 32, 4, 167, 11, 36, 1, 1, 126, 32, 0, 173, 32, 1, 173, 66, 32, 134, 132, 32, 2, 173, 32, 3, 173, 66, 32, 134, 132, 129, 34, 4, 66, 32, 135, 167, 36, 0, 32, 4, 167, 11, 36, 1, 1, 126, 32, 0, 173, 32, 1, 173, 66, 32, 134, 132, 32, 2, 173, 32, 3, 173, 66, 32, 134, 132, 130, 34, 4, 66, 32, 135, 167, 36, 0, 32, 4, 167, 11])), {}).exports;
+      wasm = void 0;
     } catch {
     }
     var TWO_PWR_16_DBL = 1 << 16;
@@ -36129,279 +36129,952 @@ var require_dist2 = __commonJS({
   }
 });
 
-// node_modules/memory-pager/index.js
-var require_memory_pager = __commonJS({
-  "node_modules/memory-pager/index.js"(exports2, module2) {
-    module2.exports = Pager;
-    function Pager(pageSize, opts) {
-      if (!(this instanceof Pager)) return new Pager(pageSize, opts);
-      this.length = 0;
-      this.updates = [];
-      this.path = new Uint16Array(4);
-      this.pages = new Array(32768);
-      this.maxPages = this.pages.length;
-      this.level = 0;
-      this.pageSize = pageSize || 1024;
-      this.deduplicate = opts ? opts.deduplicate : null;
-      this.zeros = this.deduplicate ? alloc(this.deduplicate.length) : null;
-    }
-    Pager.prototype.updated = function(page) {
-      while (this.deduplicate && page.buffer[page.deduplicate] === this.deduplicate[page.deduplicate]) {
-        page.deduplicate++;
-        if (page.deduplicate === this.deduplicate.length) {
-          page.deduplicate = 0;
-          if (page.buffer.equals && page.buffer.equals(this.deduplicate)) page.buffer = this.deduplicate;
-          break;
-        }
-      }
-      if (page.updated || !this.updates) return;
-      page.updated = true;
-      this.updates.push(page);
-    };
-    Pager.prototype.lastUpdate = function() {
-      if (!this.updates || !this.updates.length) return null;
-      var page = this.updates.pop();
-      page.updated = false;
-      return page;
-    };
-    Pager.prototype._array = function(i, noAllocate) {
-      if (i >= this.maxPages) {
-        if (noAllocate) return;
-        grow(this, i);
-      }
-      factor(i, this.path);
-      var arr = this.pages;
-      for (var j = this.level; j > 0; j--) {
-        var p = this.path[j];
-        var next = arr[p];
-        if (!next) {
-          if (noAllocate) return;
-          next = arr[p] = new Array(32768);
-        }
-        arr = next;
-      }
-      return arr;
-    };
-    Pager.prototype.get = function(i, noAllocate) {
-      var arr = this._array(i, noAllocate);
-      var first = this.path[0];
-      var page = arr && arr[first];
-      if (!page && !noAllocate) {
-        page = arr[first] = new Page(i, alloc(this.pageSize));
-        if (i >= this.length) this.length = i + 1;
-      }
-      if (page && page.buffer === this.deduplicate && this.deduplicate && !noAllocate) {
-        page.buffer = copy(page.buffer);
-        page.deduplicate = 0;
-      }
-      return page;
-    };
-    Pager.prototype.set = function(i, buf) {
-      var arr = this._array(i, false);
-      var first = this.path[0];
-      if (i >= this.length) this.length = i + 1;
-      if (!buf || this.zeros && buf.equals && buf.equals(this.zeros)) {
-        arr[first] = void 0;
-        return;
-      }
-      if (this.deduplicate && buf.equals && buf.equals(this.deduplicate)) {
-        buf = this.deduplicate;
-      }
-      var page = arr[first];
-      var b = truncate(buf, this.pageSize);
-      if (page) page.buffer = b;
-      else arr[first] = new Page(i, b);
-    };
-    Pager.prototype.toBuffer = function() {
-      var list = new Array(this.length);
-      var empty = alloc(this.pageSize);
-      var ptr = 0;
-      while (ptr < list.length) {
-        var arr = this._array(ptr, true);
-        for (var i = 0; i < 32768 && ptr < list.length; i++) {
-          list[ptr++] = arr && arr[i] ? arr[i].buffer : empty;
-        }
-      }
-      return Buffer.concat(list);
-    };
-    function grow(pager, index) {
-      while (pager.maxPages < index) {
-        var old = pager.pages;
-        pager.pages = new Array(32768);
-        pager.pages[0] = old;
-        pager.level++;
-        pager.maxPages *= 32768;
-      }
-    }
-    function truncate(buf, len) {
-      if (buf.length === len) return buf;
-      if (buf.length > len) return buf.slice(0, len);
-      var cpy = alloc(len);
-      buf.copy(cpy);
-      return cpy;
-    }
-    function alloc(size) {
-      if (Buffer.alloc) return Buffer.alloc(size);
-      var buf = new Buffer(size);
-      buf.fill(0);
-      return buf;
-    }
-    function copy(buf) {
-      var cpy = Buffer.allocUnsafe ? Buffer.allocUnsafe(buf.length) : new Buffer(buf.length);
-      buf.copy(cpy);
-      return cpy;
-    }
-    function Page(i, buf) {
-      this.offset = i * buf.length;
-      this.buffer = buf;
-      this.updated = false;
-      this.deduplicate = 0;
-    }
-    function factor(n, out) {
-      n = (n - (out[0] = n & 32767)) / 32768;
-      n = (n - (out[1] = n & 32767)) / 32768;
-      out[3] = (n - (out[2] = n & 32767)) / 32768 & 32767;
-    }
-  }
-});
-
-// node_modules/sparse-bitfield/index.js
-var require_sparse_bitfield = __commonJS({
-  "node_modules/sparse-bitfield/index.js"(exports2, module2) {
-    var pager = require_memory_pager();
-    module2.exports = Bitfield;
-    function Bitfield(opts) {
-      if (!(this instanceof Bitfield)) return new Bitfield(opts);
-      if (!opts) opts = {};
-      if (Buffer.isBuffer(opts)) opts = { buffer: opts };
-      this.pageOffset = opts.pageOffset || 0;
-      this.pageSize = opts.pageSize || 1024;
-      this.pages = opts.pages || pager(this.pageSize);
-      this.byteLength = this.pages.length * this.pageSize;
-      this.length = 8 * this.byteLength;
-      if (!powerOfTwo(this.pageSize)) throw new Error("The page size should be a power of two");
-      this._trackUpdates = !!opts.trackUpdates;
-      this._pageMask = this.pageSize - 1;
-      if (opts.buffer) {
-        for (var i = 0; i < opts.buffer.length; i += this.pageSize) {
-          this.pages.set(i / this.pageSize, opts.buffer.slice(i, i + this.pageSize));
-        }
-        this.byteLength = opts.buffer.length;
-        this.length = 8 * this.byteLength;
-      }
-    }
-    Bitfield.prototype.get = function(i) {
-      var o = i & 7;
-      var j = (i - o) / 8;
-      return !!(this.getByte(j) & 128 >> o);
-    };
-    Bitfield.prototype.getByte = function(i) {
-      var o = i & this._pageMask;
-      var j = (i - o) / this.pageSize;
-      var page = this.pages.get(j, true);
-      return page ? page.buffer[o + this.pageOffset] : 0;
-    };
-    Bitfield.prototype.set = function(i, v) {
-      var o = i & 7;
-      var j = (i - o) / 8;
-      var b = this.getByte(j);
-      return this.setByte(j, v ? b | 128 >> o : b & (255 ^ 128 >> o));
-    };
-    Bitfield.prototype.toBuffer = function() {
-      var all = alloc(this.pages.length * this.pageSize);
-      for (var i = 0; i < this.pages.length; i++) {
-        var next = this.pages.get(i, true);
-        var allOffset = i * this.pageSize;
-        if (next) next.buffer.copy(all, allOffset, this.pageOffset, this.pageOffset + this.pageSize);
-      }
-      return all;
-    };
-    Bitfield.prototype.setByte = function(i, b) {
-      var o = i & this._pageMask;
-      var j = (i - o) / this.pageSize;
-      var page = this.pages.get(j, false);
-      o += this.pageOffset;
-      if (page.buffer[o] === b) return false;
-      page.buffer[o] = b;
-      if (i >= this.byteLength) {
-        this.byteLength = i + 1;
-        this.length = this.byteLength * 8;
-      }
-      if (this._trackUpdates) this.pages.updated(page);
-      return true;
-    };
-    function alloc(n) {
-      if (Buffer.alloc) return Buffer.alloc(n);
-      var b = new Buffer(n);
-      b.fill(0);
-      return b;
-    }
-    function powerOfTwo(x) {
-      return !(x & x - 1);
-    }
-  }
-});
-
-// node_modules/@mongodb-js/saslprep/dist/memory-code-points.js
-var require_memory_code_points = __commonJS({
-  "node_modules/@mongodb-js/saslprep/dist/memory-code-points.js"(exports2) {
-    "use strict";
-    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
-      return mod && mod.__esModule ? mod : { "default": mod };
-    };
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.createMemoryCodePoints = createMemoryCodePoints;
-    var sparse_bitfield_1 = __importDefault(require_sparse_bitfield());
-    function createMemoryCodePoints(data) {
-      let offset = 0;
-      function read() {
-        const size = data.readUInt32BE(offset);
-        offset += 4;
-        const codepoints = data.slice(offset, offset + size);
-        offset += size;
-        return (0, sparse_bitfield_1.default)({ buffer: codepoints });
-      }
-      const unassigned_code_points = read();
-      const commonly_mapped_to_nothing = read();
-      const non_ASCII_space_characters = read();
-      const prohibited_characters = read();
-      const bidirectional_r_al = read();
-      const bidirectional_l = read();
-      return {
-        unassigned_code_points,
-        commonly_mapped_to_nothing,
-        non_ASCII_space_characters,
-        prohibited_characters,
-        bidirectional_r_al,
-        bidirectional_l
-      };
-    }
-  }
-});
-
-// node_modules/@mongodb-js/saslprep/dist/code-points-data.js
-var require_code_points_data = __commonJS({
-  "node_modules/@mongodb-js/saslprep/dist/code-points-data.js"(exports2) {
+// node_modules/@mongodb-js/saslprep/dist/util.js
+var require_util2 = __commonJS({
+  "node_modules/@mongodb-js/saslprep/dist/util.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var zlib_1 = require("zlib");
-    exports2.default = (0, zlib_1.gunzipSync)(Buffer.from("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", "base64"));
+    exports2.range = range;
+    function range(from, to) {
+      const list = new Array(to - from + 1);
+      for (let i = 0; i < list.length; i += 1) {
+        list[i] = from + i;
+      }
+      return list;
+    }
+  }
+});
+
+// node_modules/@mongodb-js/saslprep/dist/code-points-src.js
+var require_code_points_src = __commonJS({
+  "node_modules/@mongodb-js/saslprep/dist/code-points-src.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.bidirectional_l = exports2.bidirectional_r_al = exports2.prohibited_characters = exports2.non_ASCII_space_characters = exports2.commonly_mapped_to_nothing = exports2.unassigned_code_points = void 0;
+    var util_1 = require_util2();
+    exports2.unassigned_code_points = /* @__PURE__ */ new Set([
+      545,
+      ...(0, util_1.range)(564, 591),
+      ...(0, util_1.range)(686, 687),
+      ...(0, util_1.range)(751, 767),
+      ...(0, util_1.range)(848, 863),
+      ...(0, util_1.range)(880, 883),
+      ...(0, util_1.range)(886, 889),
+      ...(0, util_1.range)(891, 893),
+      ...(0, util_1.range)(895, 899),
+      907,
+      909,
+      930,
+      975,
+      ...(0, util_1.range)(1015, 1023),
+      1159,
+      1231,
+      ...(0, util_1.range)(1270, 1271),
+      ...(0, util_1.range)(1274, 1279),
+      ...(0, util_1.range)(1296, 1328),
+      ...(0, util_1.range)(1367, 1368),
+      1376,
+      1416,
+      ...(0, util_1.range)(1419, 1424),
+      1442,
+      1466,
+      ...(0, util_1.range)(1477, 1487),
+      ...(0, util_1.range)(1515, 1519),
+      ...(0, util_1.range)(1525, 1547),
+      ...(0, util_1.range)(1549, 1562),
+      ...(0, util_1.range)(1564, 1566),
+      1568,
+      ...(0, util_1.range)(1595, 1599),
+      ...(0, util_1.range)(1622, 1631),
+      ...(0, util_1.range)(1774, 1775),
+      1791,
+      1806,
+      ...(0, util_1.range)(1837, 1839),
+      ...(0, util_1.range)(1867, 1919),
+      ...(0, util_1.range)(1970, 2304),
+      2308,
+      ...(0, util_1.range)(2362, 2363),
+      ...(0, util_1.range)(2382, 2383),
+      ...(0, util_1.range)(2389, 2391),
+      ...(0, util_1.range)(2417, 2432),
+      2436,
+      ...(0, util_1.range)(2445, 2446),
+      ...(0, util_1.range)(2449, 2450),
+      2473,
+      2481,
+      ...(0, util_1.range)(2483, 2485),
+      ...(0, util_1.range)(2490, 2491),
+      2493,
+      ...(0, util_1.range)(2501, 2502),
+      ...(0, util_1.range)(2505, 2506),
+      ...(0, util_1.range)(2510, 2518),
+      ...(0, util_1.range)(2520, 2523),
+      2526,
+      ...(0, util_1.range)(2532, 2533),
+      ...(0, util_1.range)(2555, 2561),
+      ...(0, util_1.range)(2563, 2564),
+      ...(0, util_1.range)(2571, 2574),
+      ...(0, util_1.range)(2577, 2578),
+      2601,
+      2609,
+      2612,
+      2615,
+      ...(0, util_1.range)(2618, 2619),
+      2621,
+      ...(0, util_1.range)(2627, 2630),
+      ...(0, util_1.range)(2633, 2634),
+      ...(0, util_1.range)(2638, 2648),
+      2653,
+      ...(0, util_1.range)(2655, 2661),
+      ...(0, util_1.range)(2677, 2688),
+      2692,
+      2700,
+      2702,
+      2706,
+      2729,
+      2737,
+      2740,
+      ...(0, util_1.range)(2746, 2747),
+      2758,
+      2762,
+      ...(0, util_1.range)(2766, 2767),
+      ...(0, util_1.range)(2769, 2783),
+      ...(0, util_1.range)(2785, 2789),
+      ...(0, util_1.range)(2800, 2816),
+      2820,
+      ...(0, util_1.range)(2829, 2830),
+      ...(0, util_1.range)(2833, 2834),
+      2857,
+      2865,
+      ...(0, util_1.range)(2868, 2869),
+      ...(0, util_1.range)(2874, 2875),
+      ...(0, util_1.range)(2884, 2886),
+      ...(0, util_1.range)(2889, 2890),
+      ...(0, util_1.range)(2894, 2901),
+      ...(0, util_1.range)(2904, 2907),
+      2910,
+      ...(0, util_1.range)(2914, 2917),
+      ...(0, util_1.range)(2929, 2945),
+      2948,
+      ...(0, util_1.range)(2955, 2957),
+      2961,
+      ...(0, util_1.range)(2966, 2968),
+      2971,
+      2973,
+      ...(0, util_1.range)(2976, 2978),
+      ...(0, util_1.range)(2981, 2983),
+      ...(0, util_1.range)(2987, 2989),
+      2998,
+      ...(0, util_1.range)(3002, 3005),
+      ...(0, util_1.range)(3011, 3013),
+      3017,
+      ...(0, util_1.range)(3022, 3030),
+      ...(0, util_1.range)(3032, 3046),
+      ...(0, util_1.range)(3059, 3072),
+      3076,
+      3085,
+      3089,
+      3113,
+      3124,
+      ...(0, util_1.range)(3130, 3133),
+      3141,
+      3145,
+      ...(0, util_1.range)(3150, 3156),
+      ...(0, util_1.range)(3159, 3167),
+      ...(0, util_1.range)(3170, 3173),
+      ...(0, util_1.range)(3184, 3201),
+      3204,
+      3213,
+      3217,
+      3241,
+      3252,
+      ...(0, util_1.range)(3258, 3261),
+      3269,
+      3273,
+      ...(0, util_1.range)(3278, 3284),
+      ...(0, util_1.range)(3287, 3293),
+      3295,
+      ...(0, util_1.range)(3298, 3301),
+      ...(0, util_1.range)(3312, 3329),
+      3332,
+      3341,
+      3345,
+      3369,
+      ...(0, util_1.range)(3386, 3389),
+      ...(0, util_1.range)(3396, 3397),
+      3401,
+      ...(0, util_1.range)(3406, 3414),
+      ...(0, util_1.range)(3416, 3423),
+      ...(0, util_1.range)(3426, 3429),
+      ...(0, util_1.range)(3440, 3457),
+      3460,
+      ...(0, util_1.range)(3479, 3481),
+      3506,
+      3516,
+      ...(0, util_1.range)(3518, 3519),
+      ...(0, util_1.range)(3527, 3529),
+      ...(0, util_1.range)(3531, 3534),
+      3541,
+      3543,
+      ...(0, util_1.range)(3552, 3569),
+      ...(0, util_1.range)(3573, 3584),
+      ...(0, util_1.range)(3643, 3646),
+      ...(0, util_1.range)(3676, 3712),
+      3715,
+      ...(0, util_1.range)(3717, 3718),
+      3721,
+      ...(0, util_1.range)(3723, 3724),
+      ...(0, util_1.range)(3726, 3731),
+      3736,
+      3744,
+      3748,
+      3750,
+      ...(0, util_1.range)(3752, 3753),
+      3756,
+      3770,
+      ...(0, util_1.range)(3774, 3775),
+      3781,
+      3783,
+      ...(0, util_1.range)(3790, 3791),
+      ...(0, util_1.range)(3802, 3803),
+      ...(0, util_1.range)(3806, 3839),
+      3912,
+      ...(0, util_1.range)(3947, 3952),
+      ...(0, util_1.range)(3980, 3983),
+      3992,
+      4029,
+      ...(0, util_1.range)(4045, 4046),
+      ...(0, util_1.range)(4048, 4095),
+      4130,
+      4136,
+      4139,
+      ...(0, util_1.range)(4147, 4149),
+      ...(0, util_1.range)(4154, 4159),
+      ...(0, util_1.range)(4186, 4255),
+      ...(0, util_1.range)(4294, 4303),
+      ...(0, util_1.range)(4345, 4346),
+      ...(0, util_1.range)(4348, 4351),
+      ...(0, util_1.range)(4442, 4446),
+      ...(0, util_1.range)(4515, 4519),
+      ...(0, util_1.range)(4602, 4607),
+      4615,
+      4679,
+      4681,
+      ...(0, util_1.range)(4686, 4687),
+      4695,
+      4697,
+      ...(0, util_1.range)(4702, 4703),
+      4743,
+      4745,
+      ...(0, util_1.range)(4750, 4751),
+      4783,
+      4785,
+      ...(0, util_1.range)(4790, 4791),
+      4799,
+      4801,
+      ...(0, util_1.range)(4806, 4807),
+      4815,
+      4823,
+      4847,
+      4879,
+      4881,
+      ...(0, util_1.range)(4886, 4887),
+      4895,
+      4935,
+      ...(0, util_1.range)(4955, 4960),
+      ...(0, util_1.range)(4989, 5023),
+      ...(0, util_1.range)(5109, 5120),
+      ...(0, util_1.range)(5751, 5759),
+      ...(0, util_1.range)(5789, 5791),
+      ...(0, util_1.range)(5873, 5887),
+      5901,
+      ...(0, util_1.range)(5909, 5919),
+      ...(0, util_1.range)(5943, 5951),
+      ...(0, util_1.range)(5972, 5983),
+      5997,
+      6001,
+      ...(0, util_1.range)(6004, 6015),
+      ...(0, util_1.range)(6109, 6111),
+      ...(0, util_1.range)(6122, 6143),
+      6159,
+      ...(0, util_1.range)(6170, 6175),
+      ...(0, util_1.range)(6264, 6271),
+      ...(0, util_1.range)(6314, 7679),
+      ...(0, util_1.range)(7836, 7839),
+      ...(0, util_1.range)(7930, 7935),
+      ...(0, util_1.range)(7958, 7959),
+      ...(0, util_1.range)(7966, 7967),
+      ...(0, util_1.range)(8006, 8007),
+      ...(0, util_1.range)(8014, 8015),
+      8024,
+      8026,
+      8028,
+      8030,
+      ...(0, util_1.range)(8062, 8063),
+      8117,
+      8133,
+      ...(0, util_1.range)(8148, 8149),
+      8156,
+      ...(0, util_1.range)(8176, 8177),
+      8181,
+      8191,
+      ...(0, util_1.range)(8275, 8278),
+      ...(0, util_1.range)(8280, 8286),
+      ...(0, util_1.range)(8292, 8297),
+      ...(0, util_1.range)(8306, 8307),
+      ...(0, util_1.range)(8335, 8351),
+      ...(0, util_1.range)(8370, 8399),
+      ...(0, util_1.range)(8427, 8447),
+      ...(0, util_1.range)(8507, 8508),
+      ...(0, util_1.range)(8524, 8530),
+      ...(0, util_1.range)(8580, 8591),
+      ...(0, util_1.range)(9167, 9215),
+      ...(0, util_1.range)(9255, 9279),
+      ...(0, util_1.range)(9291, 9311),
+      9471,
+      ...(0, util_1.range)(9748, 9749),
+      9752,
+      ...(0, util_1.range)(9854, 9855),
+      ...(0, util_1.range)(9866, 9984),
+      9989,
+      ...(0, util_1.range)(9994, 9995),
+      10024,
+      10060,
+      10062,
+      ...(0, util_1.range)(10067, 10069),
+      10071,
+      ...(0, util_1.range)(10079, 10080),
+      ...(0, util_1.range)(10133, 10135),
+      10160,
+      ...(0, util_1.range)(10175, 10191),
+      ...(0, util_1.range)(10220, 10223),
+      ...(0, util_1.range)(11008, 11903),
+      11930,
+      ...(0, util_1.range)(12020, 12031),
+      ...(0, util_1.range)(12246, 12271),
+      ...(0, util_1.range)(12284, 12287),
+      12352,
+      ...(0, util_1.range)(12439, 12440),
+      ...(0, util_1.range)(12544, 12548),
+      ...(0, util_1.range)(12589, 12592),
+      12687,
+      ...(0, util_1.range)(12728, 12783),
+      ...(0, util_1.range)(12829, 12831),
+      ...(0, util_1.range)(12868, 12880),
+      ...(0, util_1.range)(12924, 12926),
+      ...(0, util_1.range)(13004, 13007),
+      13055,
+      ...(0, util_1.range)(13175, 13178),
+      ...(0, util_1.range)(13278, 13279),
+      13311,
+      ...(0, util_1.range)(19894, 19967),
+      ...(0, util_1.range)(40870, 40959),
+      ...(0, util_1.range)(42125, 42127),
+      ...(0, util_1.range)(42183, 44031),
+      ...(0, util_1.range)(55204, 55295),
+      ...(0, util_1.range)(64046, 64047),
+      ...(0, util_1.range)(64107, 64255),
+      ...(0, util_1.range)(64263, 64274),
+      ...(0, util_1.range)(64280, 64284),
+      64311,
+      64317,
+      64319,
+      64322,
+      64325,
+      ...(0, util_1.range)(64434, 64466),
+      ...(0, util_1.range)(64832, 64847),
+      ...(0, util_1.range)(64912, 64913),
+      ...(0, util_1.range)(64968, 64975),
+      ...(0, util_1.range)(65021, 65023),
+      ...(0, util_1.range)(65040, 65055),
+      ...(0, util_1.range)(65060, 65071),
+      ...(0, util_1.range)(65095, 65096),
+      65107,
+      65127,
+      ...(0, util_1.range)(65132, 65135),
+      65141,
+      ...(0, util_1.range)(65277, 65278),
+      65280,
+      ...(0, util_1.range)(65471, 65473),
+      ...(0, util_1.range)(65480, 65481),
+      ...(0, util_1.range)(65488, 65489),
+      ...(0, util_1.range)(65496, 65497),
+      ...(0, util_1.range)(65501, 65503),
+      65511,
+      ...(0, util_1.range)(65519, 65528),
+      ...(0, util_1.range)(65536, 66303),
+      66335,
+      ...(0, util_1.range)(66340, 66351),
+      ...(0, util_1.range)(66379, 66559),
+      ...(0, util_1.range)(66598, 66599),
+      ...(0, util_1.range)(66638, 118783),
+      ...(0, util_1.range)(119030, 119039),
+      ...(0, util_1.range)(119079, 119081),
+      ...(0, util_1.range)(119262, 119807),
+      119893,
+      119965,
+      ...(0, util_1.range)(119968, 119969),
+      ...(0, util_1.range)(119971, 119972),
+      ...(0, util_1.range)(119975, 119976),
+      119981,
+      119994,
+      119996,
+      120001,
+      120004,
+      120070,
+      ...(0, util_1.range)(120075, 120076),
+      120085,
+      120093,
+      120122,
+      120127,
+      120133,
+      ...(0, util_1.range)(120135, 120137),
+      120145,
+      ...(0, util_1.range)(120484, 120487),
+      ...(0, util_1.range)(120778, 120781),
+      ...(0, util_1.range)(120832, 131069),
+      ...(0, util_1.range)(173783, 194559),
+      ...(0, util_1.range)(195102, 196605),
+      ...(0, util_1.range)(196608, 262141),
+      ...(0, util_1.range)(262144, 327677),
+      ...(0, util_1.range)(327680, 393213),
+      ...(0, util_1.range)(393216, 458749),
+      ...(0, util_1.range)(458752, 524285),
+      ...(0, util_1.range)(524288, 589821),
+      ...(0, util_1.range)(589824, 655357),
+      ...(0, util_1.range)(655360, 720893),
+      ...(0, util_1.range)(720896, 786429),
+      ...(0, util_1.range)(786432, 851965),
+      ...(0, util_1.range)(851968, 917501),
+      917504,
+      ...(0, util_1.range)(917506, 917535),
+      ...(0, util_1.range)(917632, 983037)
+    ]);
+    exports2.commonly_mapped_to_nothing = /* @__PURE__ */ new Set([
+      173,
+      847,
+      6150,
+      6155,
+      6156,
+      6157,
+      8203,
+      8204,
+      8205,
+      8288,
+      65024,
+      65025,
+      65026,
+      65027,
+      65028,
+      65029,
+      65030,
+      65031,
+      65032,
+      65033,
+      65034,
+      65035,
+      65036,
+      65037,
+      65038,
+      65039,
+      65279
+    ]);
+    exports2.non_ASCII_space_characters = /* @__PURE__ */ new Set([
+      160,
+      5760,
+      8192,
+      8193,
+      8194,
+      8195,
+      8196,
+      8197,
+      8198,
+      8199,
+      8200,
+      8201,
+      8202,
+      8203,
+      8239,
+      8287,
+      12288
+    ]);
+    exports2.prohibited_characters = /* @__PURE__ */ new Set([
+      ...exports2.non_ASCII_space_characters,
+      ...(0, util_1.range)(0, 31),
+      127,
+      ...(0, util_1.range)(128, 159),
+      1757,
+      1807,
+      6158,
+      8204,
+      8205,
+      8232,
+      8233,
+      8288,
+      8289,
+      8290,
+      8291,
+      ...(0, util_1.range)(8298, 8303),
+      65279,
+      ...(0, util_1.range)(65529, 65532),
+      ...(0, util_1.range)(119155, 119162),
+      ...(0, util_1.range)(57344, 63743),
+      ...(0, util_1.range)(983040, 1048573),
+      ...(0, util_1.range)(1048576, 1114109),
+      ...(0, util_1.range)(64976, 65007),
+      ...(0, util_1.range)(65534, 65535),
+      ...(0, util_1.range)(131070, 131071),
+      ...(0, util_1.range)(196606, 196607),
+      ...(0, util_1.range)(262142, 262143),
+      ...(0, util_1.range)(327678, 327679),
+      ...(0, util_1.range)(393214, 393215),
+      ...(0, util_1.range)(458750, 458751),
+      ...(0, util_1.range)(524286, 524287),
+      ...(0, util_1.range)(589822, 589823),
+      ...(0, util_1.range)(655358, 655359),
+      ...(0, util_1.range)(720894, 720895),
+      ...(0, util_1.range)(786430, 786431),
+      ...(0, util_1.range)(851966, 851967),
+      ...(0, util_1.range)(917502, 917503),
+      ...(0, util_1.range)(983038, 983039),
+      ...(0, util_1.range)(1114110, 1114111),
+      ...(0, util_1.range)(55296, 57343),
+      65529,
+      65530,
+      65531,
+      65532,
+      65533,
+      ...(0, util_1.range)(12272, 12283),
+      832,
+      833,
+      8206,
+      8207,
+      8234,
+      8235,
+      8236,
+      8237,
+      8238,
+      8298,
+      8299,
+      8300,
+      8301,
+      8302,
+      8303,
+      917505,
+      ...(0, util_1.range)(917536, 917631)
+    ]);
+    exports2.bidirectional_r_al = /* @__PURE__ */ new Set([
+      1470,
+      1472,
+      1475,
+      ...(0, util_1.range)(1488, 1514),
+      ...(0, util_1.range)(1520, 1524),
+      1563,
+      1567,
+      ...(0, util_1.range)(1569, 1594),
+      ...(0, util_1.range)(1600, 1610),
+      ...(0, util_1.range)(1645, 1647),
+      ...(0, util_1.range)(1649, 1749),
+      1757,
+      ...(0, util_1.range)(1765, 1766),
+      ...(0, util_1.range)(1786, 1790),
+      ...(0, util_1.range)(1792, 1805),
+      1808,
+      ...(0, util_1.range)(1810, 1836),
+      ...(0, util_1.range)(1920, 1957),
+      1969,
+      8207,
+      64285,
+      ...(0, util_1.range)(64287, 64296),
+      ...(0, util_1.range)(64298, 64310),
+      ...(0, util_1.range)(64312, 64316),
+      64318,
+      ...(0, util_1.range)(64320, 64321),
+      ...(0, util_1.range)(64323, 64324),
+      ...(0, util_1.range)(64326, 64433),
+      ...(0, util_1.range)(64467, 64829),
+      ...(0, util_1.range)(64848, 64911),
+      ...(0, util_1.range)(64914, 64967),
+      ...(0, util_1.range)(65008, 65020),
+      ...(0, util_1.range)(65136, 65140),
+      ...(0, util_1.range)(65142, 65276)
+    ]);
+    exports2.bidirectional_l = /* @__PURE__ */ new Set([
+      ...(0, util_1.range)(65, 90),
+      ...(0, util_1.range)(97, 122),
+      170,
+      181,
+      186,
+      ...(0, util_1.range)(192, 214),
+      ...(0, util_1.range)(216, 246),
+      ...(0, util_1.range)(248, 544),
+      ...(0, util_1.range)(546, 563),
+      ...(0, util_1.range)(592, 685),
+      ...(0, util_1.range)(688, 696),
+      ...(0, util_1.range)(699, 705),
+      ...(0, util_1.range)(720, 721),
+      ...(0, util_1.range)(736, 740),
+      750,
+      890,
+      902,
+      ...(0, util_1.range)(904, 906),
+      908,
+      ...(0, util_1.range)(910, 929),
+      ...(0, util_1.range)(931, 974),
+      ...(0, util_1.range)(976, 1013),
+      ...(0, util_1.range)(1024, 1154),
+      ...(0, util_1.range)(1162, 1230),
+      ...(0, util_1.range)(1232, 1269),
+      ...(0, util_1.range)(1272, 1273),
+      ...(0, util_1.range)(1280, 1295),
+      ...(0, util_1.range)(1329, 1366),
+      ...(0, util_1.range)(1369, 1375),
+      ...(0, util_1.range)(1377, 1415),
+      1417,
+      2307,
+      ...(0, util_1.range)(2309, 2361),
+      ...(0, util_1.range)(2365, 2368),
+      ...(0, util_1.range)(2377, 2380),
+      2384,
+      ...(0, util_1.range)(2392, 2401),
+      ...(0, util_1.range)(2404, 2416),
+      ...(0, util_1.range)(2434, 2435),
+      ...(0, util_1.range)(2437, 2444),
+      ...(0, util_1.range)(2447, 2448),
+      ...(0, util_1.range)(2451, 2472),
+      ...(0, util_1.range)(2474, 2480),
+      2482,
+      ...(0, util_1.range)(2486, 2489),
+      ...(0, util_1.range)(2494, 2496),
+      ...(0, util_1.range)(2503, 2504),
+      ...(0, util_1.range)(2507, 2508),
+      2519,
+      ...(0, util_1.range)(2524, 2525),
+      ...(0, util_1.range)(2527, 2529),
+      ...(0, util_1.range)(2534, 2545),
+      ...(0, util_1.range)(2548, 2554),
+      ...(0, util_1.range)(2565, 2570),
+      ...(0, util_1.range)(2575, 2576),
+      ...(0, util_1.range)(2579, 2600),
+      ...(0, util_1.range)(2602, 2608),
+      ...(0, util_1.range)(2610, 2611),
+      ...(0, util_1.range)(2613, 2614),
+      ...(0, util_1.range)(2616, 2617),
+      ...(0, util_1.range)(2622, 2624),
+      ...(0, util_1.range)(2649, 2652),
+      2654,
+      ...(0, util_1.range)(2662, 2671),
+      ...(0, util_1.range)(2674, 2676),
+      2691,
+      ...(0, util_1.range)(2693, 2699),
+      2701,
+      ...(0, util_1.range)(2703, 2705),
+      ...(0, util_1.range)(2707, 2728),
+      ...(0, util_1.range)(2730, 2736),
+      ...(0, util_1.range)(2738, 2739),
+      ...(0, util_1.range)(2741, 2745),
+      ...(0, util_1.range)(2749, 2752),
+      2761,
+      ...(0, util_1.range)(2763, 2764),
+      2768,
+      2784,
+      ...(0, util_1.range)(2790, 2799),
+      ...(0, util_1.range)(2818, 2819),
+      ...(0, util_1.range)(2821, 2828),
+      ...(0, util_1.range)(2831, 2832),
+      ...(0, util_1.range)(2835, 2856),
+      ...(0, util_1.range)(2858, 2864),
+      ...(0, util_1.range)(2866, 2867),
+      ...(0, util_1.range)(2870, 2873),
+      ...(0, util_1.range)(2877, 2878),
+      2880,
+      ...(0, util_1.range)(2887, 2888),
+      ...(0, util_1.range)(2891, 2892),
+      2903,
+      ...(0, util_1.range)(2908, 2909),
+      ...(0, util_1.range)(2911, 2913),
+      ...(0, util_1.range)(2918, 2928),
+      2947,
+      ...(0, util_1.range)(2949, 2954),
+      ...(0, util_1.range)(2958, 2960),
+      ...(0, util_1.range)(2962, 2965),
+      ...(0, util_1.range)(2969, 2970),
+      2972,
+      ...(0, util_1.range)(2974, 2975),
+      ...(0, util_1.range)(2979, 2980),
+      ...(0, util_1.range)(2984, 2986),
+      ...(0, util_1.range)(2990, 2997),
+      ...(0, util_1.range)(2999, 3001),
+      ...(0, util_1.range)(3006, 3007),
+      ...(0, util_1.range)(3009, 3010),
+      ...(0, util_1.range)(3014, 3016),
+      ...(0, util_1.range)(3018, 3020),
+      3031,
+      ...(0, util_1.range)(3047, 3058),
+      ...(0, util_1.range)(3073, 3075),
+      ...(0, util_1.range)(3077, 3084),
+      ...(0, util_1.range)(3086, 3088),
+      ...(0, util_1.range)(3090, 3112),
+      ...(0, util_1.range)(3114, 3123),
+      ...(0, util_1.range)(3125, 3129),
+      ...(0, util_1.range)(3137, 3140),
+      ...(0, util_1.range)(3168, 3169),
+      ...(0, util_1.range)(3174, 3183),
+      ...(0, util_1.range)(3202, 3203),
+      ...(0, util_1.range)(3205, 3212),
+      ...(0, util_1.range)(3214, 3216),
+      ...(0, util_1.range)(3218, 3240),
+      ...(0, util_1.range)(3242, 3251),
+      ...(0, util_1.range)(3253, 3257),
+      3262,
+      ...(0, util_1.range)(3264, 3268),
+      ...(0, util_1.range)(3271, 3272),
+      ...(0, util_1.range)(3274, 3275),
+      ...(0, util_1.range)(3285, 3286),
+      3294,
+      ...(0, util_1.range)(3296, 3297),
+      ...(0, util_1.range)(3302, 3311),
+      ...(0, util_1.range)(3330, 3331),
+      ...(0, util_1.range)(3333, 3340),
+      ...(0, util_1.range)(3342, 3344),
+      ...(0, util_1.range)(3346, 3368),
+      ...(0, util_1.range)(3370, 3385),
+      ...(0, util_1.range)(3390, 3392),
+      ...(0, util_1.range)(3398, 3400),
+      ...(0, util_1.range)(3402, 3404),
+      3415,
+      ...(0, util_1.range)(3424, 3425),
+      ...(0, util_1.range)(3430, 3439),
+      ...(0, util_1.range)(3458, 3459),
+      ...(0, util_1.range)(3461, 3478),
+      ...(0, util_1.range)(3482, 3505),
+      ...(0, util_1.range)(3507, 3515),
+      3517,
+      ...(0, util_1.range)(3520, 3526),
+      ...(0, util_1.range)(3535, 3537),
+      ...(0, util_1.range)(3544, 3551),
+      ...(0, util_1.range)(3570, 3572),
+      ...(0, util_1.range)(3585, 3632),
+      ...(0, util_1.range)(3634, 3635),
+      ...(0, util_1.range)(3648, 3654),
+      ...(0, util_1.range)(3663, 3675),
+      ...(0, util_1.range)(3713, 3714),
+      3716,
+      ...(0, util_1.range)(3719, 3720),
+      3722,
+      3725,
+      ...(0, util_1.range)(3732, 3735),
+      ...(0, util_1.range)(3737, 3743),
+      ...(0, util_1.range)(3745, 3747),
+      3749,
+      3751,
+      ...(0, util_1.range)(3754, 3755),
+      ...(0, util_1.range)(3757, 3760),
+      ...(0, util_1.range)(3762, 3763),
+      3773,
+      ...(0, util_1.range)(3776, 3780),
+      3782,
+      ...(0, util_1.range)(3792, 3801),
+      ...(0, util_1.range)(3804, 3805),
+      ...(0, util_1.range)(3840, 3863),
+      ...(0, util_1.range)(3866, 3892),
+      3894,
+      3896,
+      ...(0, util_1.range)(3902, 3911),
+      ...(0, util_1.range)(3913, 3946),
+      3967,
+      3973,
+      ...(0, util_1.range)(3976, 3979),
+      ...(0, util_1.range)(4030, 4037),
+      ...(0, util_1.range)(4039, 4044),
+      4047,
+      ...(0, util_1.range)(4096, 4129),
+      ...(0, util_1.range)(4131, 4135),
+      ...(0, util_1.range)(4137, 4138),
+      4140,
+      4145,
+      4152,
+      ...(0, util_1.range)(4160, 4183),
+      ...(0, util_1.range)(4256, 4293),
+      ...(0, util_1.range)(4304, 4344),
+      4347,
+      ...(0, util_1.range)(4352, 4441),
+      ...(0, util_1.range)(4447, 4514),
+      ...(0, util_1.range)(4520, 4601),
+      ...(0, util_1.range)(4608, 4614),
+      ...(0, util_1.range)(4616, 4678),
+      4680,
+      ...(0, util_1.range)(4682, 4685),
+      ...(0, util_1.range)(4688, 4694),
+      4696,
+      ...(0, util_1.range)(4698, 4701),
+      ...(0, util_1.range)(4704, 4742),
+      4744,
+      ...(0, util_1.range)(4746, 4749),
+      ...(0, util_1.range)(4752, 4782),
+      4784,
+      ...(0, util_1.range)(4786, 4789),
+      ...(0, util_1.range)(4792, 4798),
+      4800,
+      ...(0, util_1.range)(4802, 4805),
+      ...(0, util_1.range)(4808, 4814),
+      ...(0, util_1.range)(4816, 4822),
+      ...(0, util_1.range)(4824, 4846),
+      ...(0, util_1.range)(4848, 4878),
+      4880,
+      ...(0, util_1.range)(4882, 4885),
+      ...(0, util_1.range)(4888, 4894),
+      ...(0, util_1.range)(4896, 4934),
+      ...(0, util_1.range)(4936, 4954),
+      ...(0, util_1.range)(4961, 4988),
+      ...(0, util_1.range)(5024, 5108),
+      ...(0, util_1.range)(5121, 5750),
+      ...(0, util_1.range)(5761, 5786),
+      ...(0, util_1.range)(5792, 5872),
+      ...(0, util_1.range)(5888, 5900),
+      ...(0, util_1.range)(5902, 5905),
+      ...(0, util_1.range)(5920, 5937),
+      ...(0, util_1.range)(5941, 5942),
+      ...(0, util_1.range)(5952, 5969),
+      ...(0, util_1.range)(5984, 5996),
+      ...(0, util_1.range)(5998, 6e3),
+      ...(0, util_1.range)(6016, 6070),
+      ...(0, util_1.range)(6078, 6085),
+      ...(0, util_1.range)(6087, 6088),
+      ...(0, util_1.range)(6100, 6106),
+      6108,
+      ...(0, util_1.range)(6112, 6121),
+      ...(0, util_1.range)(6160, 6169),
+      ...(0, util_1.range)(6176, 6263),
+      ...(0, util_1.range)(6272, 6312),
+      ...(0, util_1.range)(7680, 7835),
+      ...(0, util_1.range)(7840, 7929),
+      ...(0, util_1.range)(7936, 7957),
+      ...(0, util_1.range)(7960, 7965),
+      ...(0, util_1.range)(7968, 8005),
+      ...(0, util_1.range)(8008, 8013),
+      ...(0, util_1.range)(8016, 8023),
+      8025,
+      8027,
+      8029,
+      ...(0, util_1.range)(8031, 8061),
+      ...(0, util_1.range)(8064, 8116),
+      ...(0, util_1.range)(8118, 8124),
+      8126,
+      ...(0, util_1.range)(8130, 8132),
+      ...(0, util_1.range)(8134, 8140),
+      ...(0, util_1.range)(8144, 8147),
+      ...(0, util_1.range)(8150, 8155),
+      ...(0, util_1.range)(8160, 8172),
+      ...(0, util_1.range)(8178, 8180),
+      ...(0, util_1.range)(8182, 8188),
+      8206,
+      8305,
+      8319,
+      8450,
+      8455,
+      ...(0, util_1.range)(8458, 8467),
+      8469,
+      ...(0, util_1.range)(8473, 8477),
+      8484,
+      8486,
+      8488,
+      ...(0, util_1.range)(8490, 8493),
+      ...(0, util_1.range)(8495, 8497),
+      ...(0, util_1.range)(8499, 8505),
+      ...(0, util_1.range)(8509, 8511),
+      ...(0, util_1.range)(8517, 8521),
+      ...(0, util_1.range)(8544, 8579),
+      ...(0, util_1.range)(9014, 9082),
+      9109,
+      ...(0, util_1.range)(9372, 9449),
+      ...(0, util_1.range)(12293, 12295),
+      ...(0, util_1.range)(12321, 12329),
+      ...(0, util_1.range)(12337, 12341),
+      ...(0, util_1.range)(12344, 12348),
+      ...(0, util_1.range)(12353, 12438),
+      ...(0, util_1.range)(12445, 12447),
+      ...(0, util_1.range)(12449, 12538),
+      ...(0, util_1.range)(12540, 12543),
+      ...(0, util_1.range)(12549, 12588),
+      ...(0, util_1.range)(12593, 12686),
+      ...(0, util_1.range)(12688, 12727),
+      ...(0, util_1.range)(12784, 12828),
+      ...(0, util_1.range)(12832, 12867),
+      ...(0, util_1.range)(12896, 12923),
+      ...(0, util_1.range)(12927, 12976),
+      ...(0, util_1.range)(12992, 13003),
+      ...(0, util_1.range)(13008, 13054),
+      ...(0, util_1.range)(13056, 13174),
+      ...(0, util_1.range)(13179, 13277),
+      ...(0, util_1.range)(13280, 13310),
+      ...(0, util_1.range)(13312, 19893),
+      ...(0, util_1.range)(19968, 40869),
+      ...(0, util_1.range)(40960, 42124),
+      ...(0, util_1.range)(44032, 55203),
+      ...(0, util_1.range)(55296, 64045),
+      ...(0, util_1.range)(64048, 64106),
+      ...(0, util_1.range)(64256, 64262),
+      ...(0, util_1.range)(64275, 64279),
+      ...(0, util_1.range)(65313, 65338),
+      ...(0, util_1.range)(65345, 65370),
+      ...(0, util_1.range)(65382, 65470),
+      ...(0, util_1.range)(65474, 65479),
+      ...(0, util_1.range)(65482, 65487),
+      ...(0, util_1.range)(65490, 65495),
+      ...(0, util_1.range)(65498, 65500),
+      ...(0, util_1.range)(66304, 66334),
+      ...(0, util_1.range)(66336, 66339),
+      ...(0, util_1.range)(66352, 66378),
+      ...(0, util_1.range)(66560, 66597),
+      ...(0, util_1.range)(66600, 66637),
+      ...(0, util_1.range)(118784, 119029),
+      ...(0, util_1.range)(119040, 119078),
+      ...(0, util_1.range)(119082, 119142),
+      ...(0, util_1.range)(119146, 119154),
+      ...(0, util_1.range)(119171, 119172),
+      ...(0, util_1.range)(119180, 119209),
+      ...(0, util_1.range)(119214, 119261),
+      ...(0, util_1.range)(119808, 119892),
+      ...(0, util_1.range)(119894, 119964),
+      ...(0, util_1.range)(119966, 119967),
+      119970,
+      ...(0, util_1.range)(119973, 119974),
+      ...(0, util_1.range)(119977, 119980),
+      ...(0, util_1.range)(119982, 119993),
+      119995,
+      ...(0, util_1.range)(119997, 12e4),
+      ...(0, util_1.range)(120002, 120003),
+      ...(0, util_1.range)(120005, 120069),
+      ...(0, util_1.range)(120071, 120074),
+      ...(0, util_1.range)(120077, 120084),
+      ...(0, util_1.range)(120086, 120092),
+      ...(0, util_1.range)(120094, 120121),
+      ...(0, util_1.range)(120123, 120126),
+      ...(0, util_1.range)(120128, 120132),
+      120134,
+      ...(0, util_1.range)(120138, 120144),
+      ...(0, util_1.range)(120146, 120483),
+      ...(0, util_1.range)(120488, 120777),
+      ...(0, util_1.range)(131072, 173782),
+      ...(0, util_1.range)(194560, 195101),
+      ...(0, util_1.range)(983040, 1048573),
+      ...(0, util_1.range)(1048576, 1114109)
+    ]);
   }
 });
 
 // node_modules/@mongodb-js/saslprep/dist/node.js
 var require_node = __commonJS({
   "node_modules/@mongodb-js/saslprep/dist/node.js"(exports2, module2) {
-    "use strict";
-    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
-      return mod && mod.__esModule ? mod : { "default": mod };
-    };
-    var index_1 = __importDefault(require_dist2());
-    var memory_code_points_1 = require_memory_code_points();
-    var code_points_data_1 = __importDefault(require_code_points_data());
-    var codePoints = (0, memory_code_points_1.createMemoryCodePoints)(code_points_data_1.default);
+    var prep = require_dist2().default;
+    var src = require_code_points_src();
+    var codePoints = {};
+    for (const key of Object.keys(src)) {
+      if (src[key] instanceof Set) codePoints[key] = { get: (c) => src[key].has(c) };
+    }
     function saslprep(input, opts) {
-      return (0, index_1.default)(codePoints, input, opts);
+      return prep(codePoints, input, opts);
     }
     saslprep.saslprep = saslprep;
     saslprep.default = saslprep;
